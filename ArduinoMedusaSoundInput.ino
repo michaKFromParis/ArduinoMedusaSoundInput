@@ -2,16 +2,24 @@
 
 Servo 	servo;
 
-int     microphonePin = 5;
+// pins
+int     microphonePin = A5;
 int     ledPinMin     = 3;
 int     ledCount      = 6;
 int 	  servoPin      = 9;
 
+// volume
 int 	  rawVolume;
 float   volume;
 
-char* ledState = NULL;
-char* desiredLedState = NULL;
+// arrays containing the desired and actual states of LEDs used by FlushLEDState
+char*   ledState = NULL;
+char*   desiredLedState = NULL;
+
+// heigh value smoothed from the volume input using heightIncrement and heightDecrement
+float   height = 0.0f;
+float   heightIncrement = 0.1;
+float   heightDecrement = 0.01;
 
 char debugBuffer[256];
 
@@ -21,7 +29,8 @@ char debugBuffer[256];
 void setup()
 {
 
-  Serial.begin(9600); //set baud rate
+  Serial.begin(9600);
+
   //set pins attached to LEDs as outputs
   pinMode(3, OUTPUT);
   pinMode(4, OUTPUT);
@@ -30,96 +39,69 @@ void setup()
   pinMode(7, OUTPUT);
   pinMode(8, OUTPUT);
   servo.attach(servoPin);
-  
+
+  // Initializing ledState arrays  
   ledState = (char*)malloc(ledCount * sizeof(char));
   desiredLedState = (char*)malloc(ledCount * sizeof(char));
   memset(ledState, OFF, ledCount * sizeof(char));
   memset(desiredLedState, OFF, ledCount * sizeof(char));
-  ClearAllLEDs();
-}
 
-void DebugLedCode()
-{
-  LightLEDRange(0);
-  FlushLEDState();
-  delay(1000);
-  LightLEDRange(1);
-  FlushLEDState();
-  delay(1000);
-  LightLEDRange(2);
-  FlushLEDState();
-  delay(1000);
-  LightLEDRange(3);
-  FlushLEDState();
-  delay(1000);
-  LightLEDRange(4);
-  FlushLEDState();
-  delay(1000);
-  LightLEDRange(5);
-  FlushLEDState();
-  delay(1000);
-  LightLEDRange(6);
-  FlushLEDState();
-  delay(2000);
-  LightLEDRange(3);
-  FlushLEDState();
-  delay(2000);
+  ClearAllLEDs();
 }
 
 void loop()
 {
   volume = ReadVolume();
-  Serial.println(volume);       // debug the calculated value
+
   if (volume > 0.2f)
   {
-    LightLEDRange(4);
+    height += heightIncrement;
   }
   else
   {
-    LightLEDRange(0);
+    height -= heightDecrement;
   }
+
+  if (height < 0.0f)
+    height = 0.0f;
+  if (height > 1.0f)
+    height = 1.0f;
+
+  int litLedCount = (int)(height * (float)ledCount);
+  Serial.println(litLedCount);
+  TurnLedRangeOn(litLedCount);
   FlushLEDState();
-
-  //glow the LEDs depending on the ammount of sound detected by the electret
-  // if (volume > 0.0f && volume < 0.17f)
-  // { //glow first LED
-  //   Clear(4);
-  //   Glow(4);
-  //   servo.write(120);
-  // }
-  // else if (volume > 0.16f && volume < 0.33f)
-  // { //glow 2nd LED
-  //   Clear(5);
-  //   Glow(5);
-  //   servo.write(100);
-  // }
-  // else if (volume > 0.33f && volume < 0.5f)
-  // { //glow 3rd LED
-  //   Clear(6);
-  //   Glow(6);
-  //   servo.write(180);
-  // }
-  // else if (volume > 0.5f && volume < 0.66f)
-  // { //glow 4th LED
-  //   Clear(7);
-  //   Glow(7);
-  //   servo.write(90);
-  // }
-  // else if (volume > 0.83f && volume < 1.0f)
-  // { //glow 5th LED
-  //   Clear(8);
-  //   Glow(8);
-  //   servo.write(50);
-  // }
-  // else if (volume < 177 || volume > 831)
-  // { //glow 6th LED
-  //   Clear(9);
-  //   Glow(9);
-  //   servo.write(40);
-  // }
-
 }
 
+void DebugLedCode()
+{
+  TurnLedRangeOn(0);
+  FlushLEDState();
+  delay(1000);
+  TurnLedRangeOn(1);
+  FlushLEDState();
+  delay(1000);
+  TurnLedRangeOn(2);
+  FlushLEDState();
+  delay(1000);
+  TurnLedRangeOn(3);
+  FlushLEDState();
+  delay(1000);
+  TurnLedRangeOn(4);
+  FlushLEDState();
+  delay(1000);
+  TurnLedRangeOn(5);
+  FlushLEDState();
+  delay(1000);
+  TurnLedRangeOn(6);
+  FlushLEDState();
+  delay(2000);
+  TurnLedRangeOn(3);
+  FlushLEDState();
+  delay(2000);
+}
+
+// Read the volume from microphonePin and normalize it in a (0.0f -> 1.0f) range
 float ReadVolume()
 {
   rawVolume = analogRead(microphonePin);        // read raw value from microphone
@@ -135,13 +117,16 @@ float ReadVolume()
   return volume;
 }
 
+// Turn Off All LEDs
 void ClearAllLEDs()
 {
   for (int i = ledPinMin; i <= ledPinMin + ledCount; i++)
   {
-    digitalWrite(i, LOW);
+    digitalWrite(i, OFF);
   }
 }
+
+// Change the desired state for a LED index to On
 void TurnLedOn(int offset)
 {
   if (offset > ledCount || offset < 0)
@@ -152,6 +137,7 @@ void TurnLedOn(int offset)
   desiredLedState[offset] = ON;
 }
 
+// Change the desired state for a LED index to Off
 void TurnLedOff(int offset)
 {
   if (offset > ledCount || offset < 0)
@@ -162,11 +148,13 @@ void TurnLedOff(int offset)
   desiredLedState[offset] = OFF;
 }
 
-void LightLEDRange(int count)
+
+// Change the desired state for a LED range to On
+void TurnLedRangeOn(int count)
 {
   if (count > ledCount || count < 0)
   {
-    Serial.println("Invalid count in LightLEDRange");
+    Serial.println("Invalid count in TurnLedRangeOn");
     return;
   }
   for (int i = 0; i < ledCount; i++)
@@ -182,6 +170,7 @@ void LightLEDRange(int count)
   }
 }
 
+// Compare ledState array with desiredLedState array to actually turn the LEDs On or Off
 void FlushLEDState()
 {
   for (int i = 0; i < ledCount; i++)
@@ -204,14 +193,4 @@ void FlushLEDState()
     }
   }
 }
-// void Glow(int initial)//function to glow LEDs
-// {
-//   for (int i = 3; i < initial; i++)
-//     digitalWrite(i, HIGH);
-// }
 
-// void Clear(int initial)//function to clear LEDs
-// {
-//   for (int i = initial; i < 9; i++)
-//   digitalWrite(i, LOW);
-// }
